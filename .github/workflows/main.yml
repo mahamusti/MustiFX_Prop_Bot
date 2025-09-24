@@ -1,0 +1,29 @@
+name: Build MustiFX EA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile with MetaEditor (PowerShell)
+        shell: pwsh
+        run: |
+          $meta = "C:\Program Files\MetaTrader 5\metaeditor64.exe"
+          if(-not (Test-Path $meta)) { Write-Error "MetaEditor not found at $meta"; exit 2 }
+          Write-Host "Compiling EA..."
+          & $meta /compile:"${{ github.workspace }}\MQL5\Experts\MustiFX_Master.mq5" /log:"${{ github.workspace }}\build.log"
+
+      - name: Upload compiled files as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mustifx-build
+          path: |
+            **/*.ex5
+            build.log
