@@ -1,0 +1,43 @@
+{
+  "allowed_symbols": [
+    "EURUSD",
+    "GBPUSD",
+    "XAUUSD"
+  ],
+  "mode": "test",
+  "sessions": [
+    {
+      "name": "London",
+      "start": "07:00",
+      "end": "12:00",
+      "tz": "UTC"
+    },
+    {
+      "name": "NY",
+      "start": "13:00",
+      "end": "20:00",
+      "tz": "UTC"
+    }
+  ],
+  "per_pair": {
+    "XAUUSD": {
+      "stake_model": "percent",
+      "stake_value": 1.2,
+      "max_per_window": 4,
+      "window_sec": 60
+    },
+    "EURUSD": {
+      "stake_model": "percent",
+      "stake_value": 0.8,
+      "max_per_window": 3,
+      "window_sec": 60
+    },
+    "GBPUSD": {
+      "stake_model": "fixed",
+      "stake_value": 2,
+      "max_per_window": 3,
+      "window_sec": 60
+    }
+  },
+  "duplicate_window_sec": 20
+}

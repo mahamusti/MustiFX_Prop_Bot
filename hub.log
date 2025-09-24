@@ -1,0 +1,9 @@
+ * Serving Flask app 'copy_hub_flask'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8008
+ * Running on http://10.172.45.224:8008
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [07/Sep/2025 22:45:24] "POST /publish HTTP/1.1" 200 -
+127.0.0.1 - - [07/Sep/2025 22:45:24] "GET /recent HTTP/1.1" 200 -

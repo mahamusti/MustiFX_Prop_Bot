@@ -1,0 +1,29 @@
+[
+  {
+    "symbol": "XAUUSD",
+    "direction": "CALL",
+    "timeframe": "1m",
+    "expiry": "1m",
+    "stake_value": 1.0,
+    "comment": "Local test"
+  },
+  {
+    "symbol": "XAUUSD",
+    "direction": "CALL",
+    "timeframe": "1m",
+    "expiry": "1m",
+    "stake_value": 1.0,
+    "comment": "Gold test",
+    "created_at": "2025-09-07T20:40:46Z",
+    "mode": "test"
+  },
+  {
+    "symbol": "XAUUSD",
+    "direction": "CALL",
+    "timeframe": "1m",
+    "expiry": "1m",
+    "stake_value": 1.0,
+    "comment": "Test no token",
+    "created_at": "2025-09-07T21:45:24Z"
+  }
+]
