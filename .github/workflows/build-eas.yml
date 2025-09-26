@@ -1,52 +1,89 @@
-name: Build EAs
+name: Build EAs (portable zip)
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'mt4/**'
+      - 'mt5/**'
+      - '.github/workflows/**'
+      - 'tools/**'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-mt4:
+    runs-on: windows-2022
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup Wine + MetaTrader compiler
+      - name: Unzip MT4 portable if provided
+        shell: powershell
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y wine64 wine32 unzip wget
-          mkdir -p ~/mt4 ~/mt5
+          $zip = "$env:GITHUB_WORKSPACE\tools\mt4_portable.zip"
+          if (Test-Path $zip) {
+            Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt4" -Force
+            Write-Host "Unzipped MT4 portable."
+          } elseif (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt4\metaeditor.exe")) {
+            throw "MetaEditor for MT4 not found in tools/ (or tools/mt4_portable.zip not provided)."
+          }
 
-          # MT4 compiler
-          wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt4/mt4.zip -O mt4.zip
-          unzip -q mt4.zip -d ~/mt4 || true
-
-          # MT5 compiler
-          wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5.zip -O mt5.zip
-          unzip -q mt5.zip -d ~/mt5 || true
-
-      - name: Compile MQL4 (if any)
+      - name: Compile MT4 EAs
+        shell: powershell
         run: |
-          mkdir -p build/mt4
-          for f in $(find . -name "*.mq4"); do
-            echo "Compiling $f ..."
-            wine ~/mt4/metaeditor.exe /compile:"$f" /log
-            cp "\${f%.mq4}.ex4" build/mt4/ || true
-          done
+          $meta = "$env:GITHUB_WORKSPACE\tools\mt4\metaeditor.exe"
+          if (!(Test-Path $meta)) { throw "MT4 metaeditor.exe not found"; }
+          Write-Host "Compiling all MQ4 files..."
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\mt4" -Filter *.mq4 -Recurse | ForEach-Object {
+            $src = $_.FullName
+            Write-Host "Compile: $src"
+            & $meta /portable /compile:$src /log:"$env:GITHUB_WORKSPACE\mt4_compile.log"
+          }
+          # copy compiled EX4 files to workspace root (if generated)
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt4\MQL4\Experts" -Filter *.ex4 -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force
+          }
 
-      - name: Compile MQL5 (if any)
-        run: |
-          mkdir -p build/mt5
-          for f in $(find . -name "*.mq5"); do
-            echo "Compiling $f ..."
-            wine ~/mt5/metaeditor64.exe /compile:"$f" /log
-            cp "\${f%.mq5}.ex5" build/mt5/ || true
-          done
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
-          name: compiled-eas
-          path: build/**
+          name: EX4
+          path: |
+            *.ex4
+            mt4_compile.log
+
+  build-mt5:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip MT5 portable if provided
+        shell: powershell
+        run: |
+          $zip = "$env:GITHUB_WORKSPACE\tools\mt5_portable.zip"
+          if (Test-Path $zip) {
+            Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt5" -Force
+            Write-Host "Unzipped MT5 portable."
+          } elseif (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt5\metaeditor64.exe")) {
+            throw "MetaEditor64 for MT5 not found in tools/ (or tools/mt5_portable.zip not provided)."
+          }
+
+      - name: Compile MT5 EAs
+        shell: powershell
+        run: |
+          $meta = "$env:GITHUB_WORKSPACE\tools\mt5\metaeditor64.exe"
+          if (!(Test-Path $meta)) { throw "MT5 metaeditor64.exe not found"; }
+          Write-Host "Compiling all MQ5 files..."
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\mt5" -Filter *.mq5 -Recurse | ForEach-Object {
+            $src = $_.FullName
+            Write-Host "Compile: $src"
+            & $meta /portable /compile:$src /log:"$env:GITHUB_WORKSPACE\mt5_compile.log"
+          }
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt5\MQL5\Experts" -Filter *.ex5 -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EX5
+          path: |
+            *.ex5
+            mt5_compile.log
