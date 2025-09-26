@@ -1,4 +1,4 @@
-name: Build EAs (portable zip)
+name: Build MustiFX EA (release-zip)
 
 on:
   workflow_dispatch:
@@ -10,38 +10,66 @@ on:
       - '.github/workflows/**'
       - 'tools/**'
 
+env:
+  RELEASE_TAG: "v1.0"   # <-- set this to the release tag you used
+
 jobs:
-  build-mt4:
+  prepare:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip MT4 portable if provided
+      - name: Download MT portable zips from Release
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: mahamusti
+          REPO: MustiFX_Prop_Bot
+          TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          Write-Host "Fetching release by tag $Env:TAG"
+          $headers = @{ Authorization = "Bearer $Env:GITHUB_TOKEN"; "User-Agent" = "ci-agent" }
+          $rel = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$Env:OWNER/$Env:REPO/releases/tags/$Env:TAG"
+          if (-not $rel) { throw "Release $Env:TAG not found." }
+          # download each asset
+          foreach ($asset in $rel.assets) {
+            $assetName = $asset.name
+            $downloadUrl = $asset.url
+            $outPath = Join-Path $Env:GITHUB_WORKSPACE "tools\$assetName"
+            Write-Host "Downloading $assetName -> $outPath"
+            Invoke-RestMethod -Headers @{ Authorization = "Bearer $Env:GITHUB_TOKEN"; Accept = "application/octet-stream"; "User-Agent"="ci-agent" } -Uri $downloadUrl -OutFile $outPath
+          }
+      - name: List downloaded files
+        shell: powershell
+        run: |
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools" -Force | Format-Table Name, Length
+
+  build-mt4:
+    needs: prepare
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip MT4 portable
         shell: powershell
         run: |
           $zip = "$env:GITHUB_WORKSPACE\tools\mt4_portable.zip"
-          if (Test-Path $zip) {
-            Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt4" -Force
-            Write-Host "Unzipped MT4 portable."
-          } elseif (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt4\metaeditor.exe")) {
-            throw "MetaEditor for MT4 not found in tools/ (or tools/mt4_portable.zip not provided)."
-          }
+          if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt4" -Force; Write-Host "Unzipped MT4 portable"; }
+          if (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt4\metaeditor.exe")) { throw "MetaEditor for MT4 not found in tools/mt4"; }
 
       - name: Compile MT4 EAs
         shell: powershell
         run: |
           $meta = "$env:GITHUB_WORKSPACE\tools\mt4\metaeditor.exe"
-          if (!(Test-Path $meta)) { throw "MT4 metaeditor.exe not found"; }
-          Write-Host "Compiling all MQ4 files..."
+          $log  = "$env:GITHUB_WORKSPACE\mt4_compile.log"
+          Remove-Item -ErrorAction SilentlyContinue $log
           Get-ChildItem -Path "$env:GITHUB_WORKSPACE\mt4" -Filter *.mq4 -Recurse | ForEach-Object {
             $src = $_.FullName
-            Write-Host "Compile: $src"
-            & $meta /portable /compile:$src /log:"$env:GITHUB_WORKSPACE\mt4_compile.log"
+            Write-Host "Compiling: $src"
+            & $meta /portable /compile:$src /log:$log
           }
-          # copy compiled EX4 files to workspace root (if generated)
-          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt4\MQL4\Experts" -Filter *.ex4 -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force
-          }
+          # copy ex4 files back to workspace root (if produced by MetaEditor)
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt4\MQL4\Experts" -Filter *.ex4 -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -51,35 +79,30 @@ jobs:
             mt4_compile.log
 
   build-mt5:
+    needs: prepare
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip MT5 portable if provided
+      - name: Unzip MT5 portable
         shell: powershell
         run: |
           $zip = "$env:GITHUB_WORKSPACE\tools\mt5_portable.zip"
-          if (Test-Path $zip) {
-            Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt5" -Force
-            Write-Host "Unzipped MT5 portable."
-          } elseif (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt5\metaeditor64.exe")) {
-            throw "MetaEditor64 for MT5 not found in tools/ (or tools/mt5_portable.zip not provided)."
-          }
+          if (Test-Path $zip) { Expand-Archive -Path $zip -DestinationPath "$env:GITHUB_WORKSPACE\tools\mt5" -Force; Write-Host "Unzipped MT5 portable"; }
+          if (!(Test-Path "$env:GITHUB_WORKSPACE\tools\mt5\metaeditor64.exe")) { throw "MetaEditor64 for MT5 not found in tools/mt5"; }
 
       - name: Compile MT5 EAs
         shell: powershell
         run: |
           $meta = "$env:GITHUB_WORKSPACE\tools\mt5\metaeditor64.exe"
-          if (!(Test-Path $meta)) { throw "MT5 metaeditor64.exe not found"; }
-          Write-Host "Compiling all MQ5 files..."
+          $log  = "$env:GITHUB_WORKSPACE\mt5_compile.log"
+          Remove-Item -ErrorAction SilentlyContinue $log
           Get-ChildItem -Path "$env:GITHUB_WORKSPACE\mt5" -Filter *.mq5 -Recurse | ForEach-Object {
             $src = $_.FullName
-            Write-Host "Compile: $src"
-            & $meta /portable /compile:$src /log:"$env:GITHUB_WORKSPACE\mt5_compile.log"
+            Write-Host "Compiling: $src"
+            & $meta /portable /compile:$src /log:$log
           }
-          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt5\MQL5\Experts" -Filter *.ex5 -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force
-          }
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\tools\mt5\MQL5\Experts" -Filter *.ex5 -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$env:GITHUB_WORKSPACE\" -Force }
 
       - uses: actions/upload-artifact@v4
         with:
