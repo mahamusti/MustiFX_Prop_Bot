@@ -1,4 +1,4 @@
-name: Build MustiFX EAs (release assets)
+name: Build MustiFX EAs (robust collect)
 
 on:
   workflow_dispatch:
@@ -11,10 +11,10 @@ on:
       - 'MustiFX_sources/**'
 
 jobs:
-  download-and-build:
+  build:
     runs-on: windows-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Download release asset mt5_portable.zip (if exists)
@@ -25,15 +25,13 @@ jobs:
           $assetName = 'mt5_portable.zip'
           $api = "https://api.github.com/repos/${{ github.repository }}/releases/tags/$releaseTag"
           $rel = (curl -s -H "Authorization: token $env:GITHUB_TOKEN" $api) | ConvertFrom-Json
-          if ($rel -eq $null) { Write-Host "Release $releaseTag not found"; exit 0 }
-          $asset = $rel.assets | Where-Object { $_.name -eq $assetName }
-          if ($asset -ne $null) {
-            $url = $asset.url
-            Write-Host "Found $assetName => downloading..."
-            # need to pass header and auth to get asset
-            curl -L -H "Accept: application/octet-stream" -H "Authorization: token $env:GITHUB_TOKEN" $url -o $assetName
-            Expand-Archive -Path $assetName -DestinationPath mt5_portable
-          } else { Write-Host "$assetName not present on release $releaseTag. Skipping MT5 step." }
+          if ($rel -ne $null) {
+            $asset = $rel.assets | Where-Object { $_.name -eq $assetName }
+            if ($asset -ne $null) {
+              curl -L -H "Accept: application/octet-stream" -H "Authorization: token $env:GITHUB_TOKEN" $asset.url -o $assetName
+              Expand-Archive -Path $assetName -DestinationPath mt5_portable
+            } else { Write-Host "$assetName not found on release $releaseTag - skipping MT5 download" }
+          } else { Write-Host "Release $releaseTag not found - skipping MT5 download" }
 
       - name: Download release asset mt4_portable.zip (if exists)
         env:
@@ -43,52 +41,67 @@ jobs:
           $assetName = 'mt4_portable.zip'
           $api = "https://api.github.com/repos/${{ github.repository }}/releases/tags/$releaseTag"
           $rel = (curl -s -H "Authorization: token $env:GITHUB_TOKEN" $api) | ConvertFrom-Json
-          if ($rel -eq $null) { Write-Host "Release $releaseTag not found"; exit 0 }
-          $asset = $rel.assets | Where-Object { $_.name -eq $assetName }
-          if ($asset -ne $null) {
-            $url = $asset.url
-            Write-Host "Found $assetName => downloading..."
-            curl -L -H "Accept: application/octet-stream" -H "Authorization: token $env:GITHUB_TOKEN" $url -o $assetName
-            Expand-Archive -Path $assetName -DestinationPath mt4_portable
-          } else { Write-Host "$assetName not present on release $releaseTag. Skipping MT4 step." }
+          if ($rel -ne $null) {
+            $asset = $rel.assets | Where-Object { $_.name -eq $assetName }
+            if ($asset -ne $null) {
+              curl -L -H "Accept: application/octet-stream" -H "Authorization: token $env:GITHUB_TOKEN" $asset.url -o $assetName
+              Expand-Archive -Path $assetName -DestinationPath mt4_portable
+            } else { Write-Host "$assetName not found on release $releaseTag - skipping MT4 download" }
+          } else { Write-Host "Release $releaseTag not found - skipping MT4 download" }
 
-      - name: Find MetaEditor (MT5) and compile .mq5
-        if: always()
+      - name: Find MetaEditor (MT5) and compile .mq5 files
         run: |
           if (Test-Path mt5_portable) {
-            $me = Get-ChildItem -Path mt5_portable -Filter MetaEditor.exe -Recurse | Select-Object -First 1
+            $me = Get-ChildItem -Path mt5_portable -Filter MetaEditor.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($me -ne $null) {
               Write-Host "MetaEditor found: $($me.FullName)"
-              Get-ChildItem -Path MQL5 -Recurse -Filter *.mq5 | ForEach-Object {
+              Get-ChildItem -Path MQL5 -Recurse -Filter *.mq5 -ErrorAction SilentlyContinue | ForEach-Object {
+                Write-Host "Compiling: $($_.FullName)"
                 & "$($me.FullName)" /compile:$_.FullName /log
               }
             } else { Write-Host "MetaEditor.exe not found in mt5_portable. Skipping MT5 compilation." }
-          } else { Write-Host "mt5_portable folder missing. skipped mt5 compile." }
+          } else { Write-Host "mt5_portable folder missing; skipping MT5 compile." }
 
-      - name: Collect compiled ex5
-        if: always()
-        run: |
-          mkdir build || true
-          Get-ChildItem -Path . -Recurse -Filter *.ex5 | Copy-Item -Destination build -Force -ErrorAction SilentlyContinue
-
-      - name: Find MetaEditor (MT4) and compile .mq4
-        if: always()
+      - name: Find MetaEditor (MT4) and compile .mq4 files
         run: |
           if (Test-Path mt4_portable) {
-            $me = Get-ChildItem -Path mt4_portable -Filter metaeditor.exe -Recurse | Select-Object -First 1
+            $me = Get-ChildItem -Path mt4_portable -Filter metaeditor.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($me -ne $null) {
               Write-Host "MetaEditor (MT4) found: $($me.FullName)"
-              Get-ChildItem -Path MQL4 -Recurse -Filter *.mq4 | ForEach-Object {
+              Get-ChildItem -Path MQL4 -Recurse -Filter *.mq4 -ErrorAction SilentlyContinue | ForEach-Object {
+                Write-Host "Compiling: $($_.FullName)"
                 & "$($me.FullName)" /compile:$_.FullName /log
               }
             } else { Write-Host "metaeditor.exe not found in mt4_portable. Skipping MT4 compilation." }
-          } else { Write-Host "mt4_portable folder missing. skipped mt4 compile." }
+          } else { Write-Host "mt4_portable folder missing; skipping MT4 compile." }
 
-      - name: Collect compiled ex4
-        if: always()
+      - name: Find and collect EX5 (MT5)
+        run: |
+          mkdir build || true
+          $found = Get-ChildItem -Path $PWD -Recurse -Filter *.ex5 -ErrorAction SilentlyContinue
+          if ($found -ne $null) {
+            $found | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination (Join-Path $PWD 'build') -Force
+              Write-Host "Copied ex5: $($_.FullName)"
+            }
+          } else { Write-Host "No ex5 files found" }
+
+      - name: Find and collect EX4 (MT4)
         run: |
           mkdir build_mt4 || true
-          Get-ChildItem -Path . -Recurse -Filter *.ex4 | Copy-Item -Destination build_mt4 -Force -ErrorAction SilentlyContinue
+          $found = Get-ChildItem -Path $PWD -Recurse -Filter *.ex4 -ErrorAction SilentlyContinue
+          if ($found -ne $null) {
+            $found | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination (Join-Path $PWD 'build_mt4') -Force
+              Write-Host "Copied ex4: $($_.FullName)"
+            }
+          } else { Write-Host "No ex4 files found" }
+
+      - name: List collected artifacts
+        run: |
+          Write-Host "Listing build/ and build_mt4/"
+          Get-ChildItem -Path build -Recurse -Force -ErrorAction SilentlyContinue || Write-Host "build empty"
+          Get-ChildItem -Path build_mt4 -Recurse -Force -ErrorAction SilentlyContinue || Write-Host "build_mt4 empty"
 
       - name: Upload compiled artifacts
         uses: actions/upload-artifact@v4
